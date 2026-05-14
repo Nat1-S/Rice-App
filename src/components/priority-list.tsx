@@ -29,15 +29,17 @@ import {
   clampReach,
   confidenceFromSliderUi,
   confidenceSliderUiValue,
+  EFFORT_OPTIONS,
   IMPACT_OPTIONS,
-  MIN_EFFORT,
   REACH_MAX,
   REACH_MIN,
   reachFillPercent,
   reachFromSliderUi,
   reachSliderUiValue,
   scoreTierUi,
+  snapEffortToDiscrete,
 } from "@/lib/rice"
+import { cn } from "@/lib/utils"
 import type { PriorityRow } from "@/lib/supabase/client"
 import { getSupabaseBrowser, isSupabaseConfigured } from "@/lib/supabase/client"
 import { usePrioritiesRealtime } from "@/hooks/use-priorities-realtime"
@@ -54,7 +56,7 @@ export function PriorityList() {
     reach: [5] as number[],
     impact: 1 as number,
     confidence: [70] as number[],
-    effort: "",
+    effort: 1 as number,
   })
 
   const load = useCallback(async () => {
@@ -108,7 +110,7 @@ export function PriorityList() {
       reach: [clampReach(Number(row.reach))],
       impact: row.impact,
       confidence: [row.confidence],
-      effort: String(row.effort),
+      effort: snapEffortToDiscrete(Number(row.effort)),
     })
     setSheetOpen(true)
   }
@@ -135,7 +137,7 @@ export function PriorityList() {
     const supabase = getSupabaseBrowser()
     if (!supabase) return
     const reachVal = form.reach[0] ?? REACH_MIN
-    const effort = Number.parseFloat(form.effort)
+    const effort = form.effort
     const conf = form.confidence[0] ?? 70
     const score = calculateRiceScore(reachVal, form.impact, conf, effort)
     if (score == null) return
@@ -449,18 +451,36 @@ export function PriorityList() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-effort">Effort (חודשי-אדם, מינ׳ {MIN_EFFORT})</Label>
-                <Input
-                  id="edit-effort"
-                  type="number"
-                  inputMode="decimal"
-                  min={MIN_EFFORT}
-                  step={0.5}
-                  value={form.effort}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, effort: e.target.value }))
-                  }
-                />
+                <Label>Effort (חודשי-אדם)</Label>
+                <div
+                  dir="ltr"
+                  className="grid grid-cols-5 gap-1 rounded-lg bg-muted/40 p-1 ring-1 ring-border/60"
+                >
+                  {EFFORT_OPTIONS.map((opt) => {
+                    const selected = form.effort === opt.value
+                    return (
+                      <TapMotion key={opt.value} className="block min-w-0">
+                        <Button
+                          type="button"
+                          variant={selected ? "default" : "ghost"}
+                          size="sm"
+                          className={cn(
+                            "h-auto w-full flex-col gap-0.5 py-2 text-[10px] leading-tight",
+                            selected && "shadow-sm"
+                          )}
+                          onClick={() =>
+                            setForm((f) => ({ ...f, effort: opt.value }))
+                          }
+                        >
+                          <span className="font-medium tabular-nums">
+                            {opt.value}
+                          </span>
+                          <span className="opacity-80">{opt.label}</span>
+                        </Button>
+                      </TapMotion>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           </ScrollArea>

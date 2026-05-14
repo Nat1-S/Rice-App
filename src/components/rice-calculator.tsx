@@ -24,8 +24,8 @@ import {
   confidenceAsDecimal,
   confidenceFromSliderUi,
   confidenceSliderUiValue,
+  EFFORT_OPTIONS,
   IMPACT_OPTIONS,
-  MIN_EFFORT,
   REACH_MAX,
   REACH_MIN,
   reachFromSliderUi,
@@ -59,7 +59,7 @@ export function RiceCalculator() {
   const [reach, setReach] = useState<number[]>([5])
   const [impact, setImpact] = useState<number>(1)
   const [confidence, setConfidence] = useState<number[]>([70])
-  const [effort, setEffort] = useState("")
+  const [effort, setEffort] = useState(1)
   const [open, setOpen] = useState(false)
   const [score, setScore] = useState(0)
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "ok" | "err">(
@@ -70,11 +70,9 @@ export function RiceCalculator() {
   const conf = confidence[0] ?? 70
   const reachVal = reach[0] ?? 5
 
-  const parsedEffort = Number.parseFloat(effort)
   const previewScore = useMemo(() => {
-    if (!Number.isFinite(parsedEffort) || parsedEffort < MIN_EFFORT) return null
-    return calculateRiceScore(reachVal, impact, conf, parsedEffort)
-  }, [reachVal, parsedEffort, impact, conf])
+    return calculateRiceScore(reachVal, impact, conf, effort)
+  }, [reachVal, effort, impact, conf])
 
   const runConfetti = useCallback(() => {
     const end = Date.now() + 1200
@@ -131,7 +129,7 @@ export function RiceCalculator() {
         reach: reachVal,
         impact,
         confidence: conf,
-        effort: parsedEffort,
+        effort,
         score: previewScore,
       })
       if (error) {
@@ -295,21 +293,32 @@ export function RiceCalculator() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="effort">Effort (מאמץ, חודשי-אדם)</Label>
-            <Input
-              id="effort"
-              type="number"
-              inputMode="decimal"
-              min={MIN_EFFORT}
-              step={0.5}
-              value={effort}
-              onChange={(e) => setEffort(e.target.value)}
-              placeholder="1"
-              className="bg-transparent dark:bg-input/30"
-            />
-            <p className="text-muted-foreground text-xs">
-              מינימום {MIN_EFFORT} חודשי-אדם — לא ניתן להזין 0.
-            </p>
+            <Label>Effort (מאמץ, חודשי-אדם)</Label>
+            <div
+              dir="ltr"
+              className="grid grid-cols-5 gap-1 rounded-lg bg-muted/40 p-1 ring-1 ring-border/60"
+            >
+              {EFFORT_OPTIONS.map((opt) => {
+                const selected = effort === opt.value
+                return (
+                  <TapMotion key={opt.value} className="block min-w-0">
+                    <Button
+                      type="button"
+                      variant={selected ? "default" : "ghost"}
+                      size="sm"
+                      className={cn(
+                        "h-auto w-full flex-col gap-0.5 py-2 text-[10px] leading-tight",
+                        selected && "shadow-sm"
+                      )}
+                      onClick={() => setEffort(opt.value)}
+                    >
+                      <span className="font-medium tabular-nums">{opt.value}</span>
+                      <span className="opacity-80">{opt.label}</span>
+                    </Button>
+                  </TapMotion>
+                )
+              })}
+            </div>
           </div>
 
           {previewScore != null && (
@@ -318,7 +327,7 @@ export function RiceCalculator() {
               animate={{ opacity: 1, y: 0 }}
               className="text-muted-foreground text-xs"
             >
-              ({reachVal} × {impact} × {confDec.toFixed(2)}) ÷ {parsedEffort} ={" "}
+              ({reachVal} × {impact} × {confDec.toFixed(2)}) ÷ {effort} ={" "}
               <span className="font-mono text-foreground">
                 {previewScore.toFixed(1)}
               </span>
@@ -363,7 +372,7 @@ export function RiceCalculator() {
                 <DialogDescription className="text-start text-muted-foreground">
                   <span className="block text-foreground/90">{resultUi.description}</span>
                   <span className="mt-2 block">
-                    ספים: 1–19 נמוך · 20–39 בינוני · 40 ומעלה גבוה.
+                    ספים: 1–10 נמוך · 11–24 בינוני · 25 ומעלה גבוה.
                   </span>
                 </DialogDescription>
               </div>

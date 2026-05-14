@@ -2,8 +2,8 @@ import type { Metadata } from "next"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import {
+  EFFORT_OPTIONS,
   IMPACT_OPTIONS,
-  MIN_EFFORT,
   REACH_MAX,
   REACH_MIN,
 } from "@/lib/rice"
@@ -114,11 +114,9 @@ export default function RicePrinciplesPage() {
             הערכתכם.
           </p>
           <p className="text-muted-foreground">
-            <strong>נרמול באפליקציה:</strong> מינימום{" "}
-            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-              {MIN_EFFORT}
-            </code>{" "}
-            חודשי־אדם (לא ניתן 0 — מונע חלוקה באפס ועיוות ציון).
+            <strong>נרמול באפליקציה:</strong> בחירה מתוך ערכים קבועים (מגבוה לנמוך
+            בתצוגה):{" "}
+            {EFFORT_OPTIONS.map((o) => `${o.value} חודשים`).join(" · ")}.
           </p>
           <div>
             <p className="mb-2 font-medium">שאלות מנחות:</p>
@@ -147,7 +145,7 @@ export default function RicePrinciplesPage() {
   Reach הוא שלם בין ${REACH_MIN} ל-${REACH_MAX}
   Impact הוא אחד מ: ${IMPACT_OPTIONS.map((o) => o.value).join(", ")}
   Confidence_עשרוני = (אחוז ביטחון ב-UI) ÷ 100
-  Effort ≥ ${MIN_EFFORT} חודשי-אדם`}
+  Effort הוא אחד מ: ${EFFORT_OPTIONS.map((o) => o.value).join(", ")} חודשי-אדם`}
           </pre>
           <Separator />
           <p>
@@ -162,13 +160,13 @@ export default function RicePrinciplesPage() {
           </p>
           <ul className="list-inside list-disc space-y-1 text-muted-foreground">
             <li>
-              1–19 — <strong className="text-foreground">נמוך</strong> (✖️)
+              1–10 — <strong className="text-foreground">נמוך</strong> (✖️)
             </li>
             <li>
-              20–39 — <strong className="text-foreground">בינוני</strong> (🤔)
+              11–24 — <strong className="text-foreground">בינוני</strong> (🤔)
             </li>
             <li>
-              40 ומעלה (טווח יעד 40–60) — <strong className="text-foreground">גבוה</strong> (✅, כולל קונפטי במחשבון)
+              25 ומעלה — <strong className="text-foreground">גבוה</strong> (✅, כולל קונפטי במחשבון)
             </li>
           </ul>
         </CardContent>

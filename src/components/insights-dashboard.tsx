@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import type { CSSProperties } from "react"
 import { motion } from "framer-motion"
 import {
   Bar,
@@ -33,6 +34,61 @@ const QUADRANT_COLORS: Record<string, string> = {
   "Big Bets": "hsl(262 70% 55%)",
   "Fill-ins": "hsl(215 20% 50%)",
   "Time Wasters": "hsl(0 72% 55%)",
+}
+
+const scatterTooltipBoxStyle: CSSProperties = {
+  background: "#1a1a1a",
+  border: "1px solid #333",
+  borderRadius: 8,
+  fontSize: 12,
+  color: "#fafafa",
+  padding: "8px 10px",
+  maxWidth: 280,
+}
+
+function formatScatterAxisNumber(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2)
+}
+
+function ValueEffortScatterTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean
+  payload?: ReadonlyArray<{ payload?: unknown }>
+}) {
+  if (!active || !payload?.length) return null
+  const raw = payload[0]?.payload
+  if (!raw || typeof raw !== "object") return null
+  const d = raw as { name?: string; effort?: number; value?: number }
+  const title = (d.name ?? "").trim() || "—"
+  const effort = d.effort
+  const value = d.value
+  const effortStr =
+    typeof effort === "number" && Number.isFinite(effort)
+      ? formatScatterAxisNumber(effort)
+      : "—"
+  const valueStr =
+    typeof value === "number" && Number.isFinite(value)
+      ? formatScatterAxisNumber(value)
+      : "—"
+
+  return (
+    <div style={scatterTooltipBoxStyle}>
+      <p
+        className="mb-1.5 font-semibold leading-snug"
+        style={{ margin: 0, wordBreak: "break-word" }}
+      >
+        {title}
+      </p>
+      <p style={{ margin: "4px 0 0", opacity: 0.9 }} dir="ltr">
+        Effort : {effortStr}
+      </p>
+      <p style={{ margin: "4px 0 0", opacity: 0.9 }} dir="ltr">
+        Value : {valueStr}
+      </p>
+    </div>
+  )
 }
 
 export function InsightsDashboard() {
@@ -110,9 +166,9 @@ export function InsightsDashboard() {
       else low++
     }
     return [
-      { name: "גבוה (40+)", count: high, key: "high" },
-      { name: "בינוני (20–39)", count: medium, key: "medium" },
-      { name: "נמוך (1–19)", count: low, key: "low" },
+      { name: "גבוה (25+)", count: high, key: "high" },
+      { name: "בינוני (11–24)", count: medium, key: "medium" },
+      { name: "נמוך (1–10)", count: low, key: "low" },
     ]
   }, [rows])
 
@@ -271,13 +327,7 @@ export function InsightsDashboard() {
                       <ZAxis range={[60, 60]} />
                       <Tooltip
                         cursor={{ strokeDasharray: "3 3" }}
-                        contentStyle={{
-                          background: "#1a1a1a",
-                          border: "1px solid #333",
-                          borderRadius: 8,
-                          fontSize: 12,
-                          color: "#fafafa",
-                        }}
+                        content={<ValueEffortScatterTooltip />}
                       />
                       <Scatter data={scatterData} fill="hsl(var(--primary))">
                         {scatterData.map((e) => (
@@ -307,7 +357,7 @@ export function InsightsDashboard() {
               <CardHeader>
                 <CardTitle className="text-base">התפלגות לפי עדיפות</CardTitle>
                 <p className="text-muted-foreground text-xs">
-                  מספר רעיונות לפי חיווי: 1–19 נמוך, 20–39 בינוני, 40 ומעלה גבוה.
+                  מספר רעיונות לפי חיווי: 1–10 נמוך, 11–24 בינוני, 25 ומעלה גבוה.
                 </p>
               </CardHeader>
               <CardContent className="h-80">

@@ -26,8 +26,37 @@ export function confidenceFromSliderUi(ui: number): number {
   return 100 - ui
 }
 
-/** מאמץ מינימלי — חודשי-אדם (מונע חלוקה ב-0 ועיוות). */
-export const MIN_EFFORT = 0.5
+/** מאמץ מינימלי — חודשי-אדם (ערכים מותרים ב־UI: ראה EFFORT_OPTIONS). */
+export const MIN_EFFORT = 0.25
+
+/** Effort: בחירה מתוך ערכים קבועים; בתצוגה עוטפים ב־dir=ltr (גבוה משמאל). */
+export const EFFORT_OPTIONS = [
+  { value: 3, label: "חודשים" },
+  { value: 2, label: "חודשים" },
+  { value: 1, label: "חודשים" },
+  { value: 0.5, label: "חודשים" },
+  { value: 0.25, label: "חודשים" },
+] as const
+
+export type EffortOptionValue = (typeof EFFORT_OPTIONS)[number]["value"]
+
+const EFFORT_VALUE_SET = new Set<number>(EFFORT_OPTIONS.map((o) => o.value))
+
+/** ממפה מאמץ ממסד (או ישן) לערך הקרוב ביותר מתוך EFFORT_OPTIONS. */
+export function snapEffortToDiscrete(effort: number): EffortOptionValue {
+  if (!Number.isFinite(effort)) return 1
+  if (EFFORT_VALUE_SET.has(effort)) return effort as EffortOptionValue
+  let best: EffortOptionValue = EFFORT_OPTIONS[0]!.value
+  let bestDist = Math.abs(best - effort)
+  for (const o of EFFORT_OPTIONS) {
+    const d = Math.abs(o.value - effort)
+    if (d < bestDist) {
+      best = o.value
+      bestDist = d
+    }
+  }
+  return best
+}
 
 /** Impact: ערכים מהגבוה לנמוך; בתצוגה עוטפים ב־dir=ltr כדי שב־RTL יופיע גבוה משמאל. */
 export const IMPACT_OPTIONS = [
@@ -94,11 +123,11 @@ export function clampReach(n: number): number {
 export type ScoreTier = "high" | "medium" | "low"
 
 /**
- * חיווי UI לפי ציון: 1–19 נמוך, 20–39 בינוני, 40 ומעלה גבוה (מעל 60 נשאר גבוה).
+ * חיווי UI לפי ציון: 1–10 נמוך, 11–24 בינוני, 25 ומעלה גבוה (25 נספר בגבוה).
  */
 export function scoreTier(score: number): ScoreTier {
-  if (score >= 40) return "high"
-  if (score >= 20) return "medium"
+  if (score >= 25) return "high"
+  if (score >= 11) return "medium"
   return "low"
 }
 
@@ -120,7 +149,7 @@ export function scoreTierUi(score: number): ScoreTierUi {
     return {
       tier,
       label: "גבוה",
-      description: "ציון 40 ומעלה (טווח יעד 40–60) — כדאי לבצע",
+      description: "ציון 25 ומעלה — כדאי לבצע",
       variant: "default",
       emoji: "✅",
     }
@@ -129,7 +158,7 @@ export function scoreTierUi(score: number): ScoreTierUi {
     return {
       tier,
       label: "בינוני",
-      description: "ציון 20–39 — לשקול",
+      description: "ציון 11–24 — לשקול",
       variant: "secondary",
       emoji: "🤔",
     }
@@ -137,7 +166,7 @@ export function scoreTierUi(score: number): ScoreTierUi {
   return {
     tier,
     label: "נמוך",
-    description: "מתחת ל־20 (טווח נמוך 1–19) — לא לבצע כעת",
+    description: "ציון 1–10 — לא לבצע כעת",
     variant: "destructive",
     emoji: "✖️",
   }
