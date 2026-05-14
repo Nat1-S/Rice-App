@@ -1,3 +1,4 @@
+import type { Metadata } from "next"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -7,7 +8,7 @@ import {
   REACH_MIN,
 } from "@/lib/rice"
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "כללי ה-RICE | PriorityMaster",
   description: "הסבר על מרכיבי RICE, שאלות מנחות ונוסחת הציון",
 }
