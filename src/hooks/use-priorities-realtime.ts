@@ -4,19 +4,27 @@ import { useEffect } from "react"
 import { getSupabaseBrowser } from "@/lib/supabase/client"
 
 /**
- * מנוי לשינויים בטבלת priorities (INSERT/UPDATE/DELETE).
+ * מנוי לשינויים בטבלת priorities — מסונן לפי user_id (תואם RLS).
  * דורש הפעלת Realtime לטבלה בפרויקט Supabase (Database → Replication).
  */
-export function usePrioritiesRealtime(onChange: () => void) {
+export function usePrioritiesRealtime(
+  userId: string | undefined | null,
+  onChange: () => void
+) {
   useEffect(() => {
     const supabase = getSupabaseBrowser()
-    if (!supabase) return
+    if (!supabase || !userId) return
 
     const channel = supabase
-      .channel("priorities-changes")
+      .channel(`priorities-${userId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "priorities" },
+        {
+          event: "*",
+          schema: "public",
+          table: "priorities",
+          filter: `user_id=eq.${userId}`,
+        },
         () => {
           onChange()
         }
@@ -26,5 +34,5 @@ export function usePrioritiesRealtime(onChange: () => void) {
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [onChange])
+  }, [userId, onChange])
 }

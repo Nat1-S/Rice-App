@@ -2,28 +2,56 @@
 export const REACH_MIN = 1
 export const REACH_MAX = 10
 
-/** ערך לסליידר LTR: גבוה משמאל — UI = MIN + MAX - reach */
-export function reachSliderUiValue(reach: number): number {
-  return REACH_MIN + REACH_MAX - reach
+/** RTL (עברית): היפוך סליידר — גבוה בצד התחלתי. LTR (אנגלית): נמוך משמאל, גבוה מימין. */
+export function reachSliderUiValue(reach: number, rtl = true): number {
+  if (rtl) return REACH_MIN + REACH_MAX - reach
+  return reach
 }
 
-export function reachFromSliderUi(ui: number): number {
-  return REACH_MIN + REACH_MAX - ui
+export function reachFromSliderUi(ui: number, rtl = true): number {
+  if (rtl) return REACH_MIN + REACH_MAX - ui
+  return ui
 }
 
-/** אחוז רוחב מילוי לפי Reach אמיתי 1–10 (מוצמד לימין במסילה: 1→0%, 10→100%). */
+/** אחוז רוחב מילוי לפי Reach אמיתי 1–10 */
 export function reachFillPercent(reach: number): number {
   const r = Math.min(REACH_MAX, Math.max(REACH_MIN, reach))
   return ((r - REACH_MIN) / (REACH_MAX - REACH_MIN)) * 100
 }
 
-/** Confidence 0–100 על סליידר LTR: גבוה משמאל — UI = 100 - אחוז */
-export function confidenceSliderUiValue(confidencePercent: number): number {
-  return 100 - confidencePercent
+/** RTL: מילוי מוצמד לימין. LTR: מילוי מוצמד לשמאל */
+export function reachFillJustifyClass(rtl: boolean): string {
+  return rtl ? "justify-end" : "justify-start"
 }
 
-export function confidenceFromSliderUi(ui: number): number {
-  return 100 - ui
+/** Confidence 0–100 — היפוך ב-RTL בלבד */
+export function confidenceSliderUiValue(
+  confidencePercent: number,
+  rtl = true
+): number {
+  if (rtl) return 100 - confidencePercent
+  return confidencePercent
+}
+
+export function confidenceFromSliderUi(ui: number, rtl = true): number {
+  if (rtl) return 100 - ui
+  return ui
+}
+
+/** רקע מסילת ביטחון: ירוק = גבוה, אדום = נמוך (לפי כיוון קריאה) */
+export function confidenceTrackGradient(rtl: boolean): string {
+  return rtl
+    ? "linear-gradient(90deg, #16a34a 0%, #facc15 50%, #dc2626 100%)"
+    : "linear-gradient(90deg, #dc2626 0%, #facc15 50%, #16a34a 100%)"
+}
+
+/** סדר תצוגה: RTL = גבוה→נמוך, LTR = נמוך→גבוה */
+export function getImpactOptionsForDir(rtl: boolean) {
+  return rtl ? [...IMPACT_OPTIONS] : [...IMPACT_OPTIONS].reverse()
+}
+
+export function getEffortOptionsForDir(rtl: boolean) {
+  return rtl ? [...EFFORT_OPTIONS] : [...EFFORT_OPTIONS].reverse()
 }
 
 /** מאמץ מינימלי — חודשי-אדם (ערכים מותרים ב־UI: ראה EFFORT_OPTIONS). */
@@ -123,10 +151,10 @@ export function clampReach(n: number): number {
 export type ScoreTier = "high" | "medium" | "low"
 
 /**
- * חיווי UI לפי ציון: 1–10 נמוך, 11–24 בינוני, 25 ומעלה גבוה (25 נספר בגבוה).
+ * חיווי UI לפי ציון: 1–10 נמוך, 11–29 בינוני, 30 ומעלה גבוה (30 נספר בגבוה).
  */
 export function scoreTier(score: number): ScoreTier {
-  if (score >= 25) return "high"
+  if (score >= 30) return "high"
   if (score >= 11) return "medium"
   return "low"
 }
@@ -149,7 +177,7 @@ export function scoreTierUi(score: number): ScoreTierUi {
     return {
       tier,
       label: "גבוה",
-      description: "ציון 25 ומעלה — כדאי לבצע",
+      description: "ציון 30 ומעלה — כדאי לבצע",
       variant: "default",
       emoji: "✅",
     }
@@ -158,7 +186,7 @@ export function scoreTierUi(score: number): ScoreTierUi {
     return {
       tier,
       label: "בינוני",
-      description: "ציון 11–24 — לשקול",
+      description: "ציון 11–29 — לשקול",
       variant: "secondary",
       emoji: "🤔",
     }

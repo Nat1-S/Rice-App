@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
-import { AppSidebar } from "@/components/app-sidebar"
+import { AppShell } from "@/components/app-shell"
+import { Providers } from "@/components/providers"
 import "./globals.css"
 
 const geistSans = Geist({
@@ -15,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "PriorityMaster",
-  description: "מחשבון RICE, רשימת תעדוף ודאשבורד תובנות",
+  description: "RICE calculator, priority list, and insights dashboard",
 }
 
 export default function RootLayout({
@@ -27,13 +28,13 @@ export default function RootLayout({
     <html
       lang="he"
       dir="rtl"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} dark h-full antialiased`}
     >
       <body className="flex min-h-full flex-col bg-background text-foreground">
-        <div className="flex min-h-0 flex-1">
-          <AppSidebar />
-          <main className="min-h-0 min-w-0 flex-1 overflow-auto">{children}</main>
-        </div>
+        <Providers>
+          <AppShell>{children}</AppShell>
+        </Providers>
       </body>
     </html>
   )

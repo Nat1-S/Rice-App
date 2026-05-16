@@ -18,23 +18,29 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { MetricOptionsGrid } from "@/components/metric-options-grid"
 import { TapMotion } from "@/components/tap-motion"
+import { useAuth } from "@/contexts/auth-context"
+import { useTranslation } from "@/contexts/language-context"
 import {
   calculateRiceScore,
   confidenceAsDecimal,
   confidenceFromSliderUi,
   confidenceSliderUiValue,
-  EFFORT_OPTIONS,
-  IMPACT_OPTIONS,
+  confidenceTrackGradient,
+  getEffortOptionsForDir,
+  getImpactOptionsForDir,
   REACH_MAX,
   REACH_MIN,
+  reachFillJustifyClass,
   reachFromSliderUi,
   reachFillPercent,
   reachSliderUiValue,
   scoreTier,
-  scoreTierUi,
 } from "@/lib/rice"
+import { scoreTierFromDictionary } from "@/lib/score-tier-ui"
 import { getSupabaseBrowser, isSupabaseConfigured } from "@/lib/supabase/client"
+import { pageContainerNarrow, sliderTouchClass } from "@/lib/layout"
 import { cn } from "@/lib/utils"
 
 function confidenceHue(percent: number): string {
@@ -55,6 +61,16 @@ function ScoreResultIcon({ tier }: { tier: "high" | "medium" | "low" }) {
 }
 
 export function RiceCalculator() {
+  const { user: authUser } = useAuth()
+  const { t, dir } = useTranslation()
+  const rtl = dir === "rtl"
+
+  const impactOptions = useMemo(
+    () => getImpactOptionsForDir(rtl),
+    [rtl]
+  )
+  const effortOptions = useMemo(() => getEffortOptionsForDir(rtl), [rtl])
+
   const [name, setName] = useState("")
   const [reach, setReach] = useState<number[]>([5])
   const [impact, setImpact] = useState<number>(1)
@@ -101,6 +117,14 @@ export function RiceCalculator() {
     if (scoreTier(score) === "high") runConfetti()
   }, [open, score, runConfetti])
 
+  const reachHintText = useMemo(
+    () =>
+      t.calculator.reachHint
+        .replace("{max}", String(REACH_MAX))
+        .replace("{min}", String(REACH_MIN)),
+    [t.calculator.reachHint]
+  )
+
   const handleCalculate = () => {
     if (previewScore == null) return
     setScore(previewScore)
@@ -113,17 +137,28 @@ export function RiceCalculator() {
     const supabase = getSupabaseBrowser()
     if (!supabase) {
       setSaveStatus("err")
-      setSaveErrorDetail("אין הגדרת Supabase בדפדפן (משתני NEXT_PUBLIC_*).")
+      setSaveErrorDetail(t.calculator.envHint)
       return
     }
     if (!name.trim() || previewScore == null) {
       setSaveStatus("err")
-      setSaveErrorDetail("חסר שם או ציון לא תקין.")
+      setSaveErrorDetail(t.calculator.missingNameOrScore)
       return
     }
+
     setSaveStatus("saving")
     setSaveErrorDetail(null)
     try {
+      const {
+        data: { user: sessionUser },
+      } = await supabase.auth.getUser()
+      const user = sessionUser ?? authUser ?? null
+      if (!user) {
+        setSaveStatus("err")
+        setSaveErrorDetail(t.calculator.notSignedIn)
+        return
+      }
+
       const { error } = await supabase.from("priorities").insert({
         name: name.trim(),
         reach: reachVal,
@@ -131,6 +166,7 @@ export function RiceCalculator() {
         confidence: conf,
         effort,
         score: previewScore,
+        user_id: user.id,
       })
       if (error) {
         setSaveStatus("err")
@@ -140,36 +176,35 @@ export function RiceCalculator() {
       }
     } catch (e) {
       setSaveStatus("err")
-      setSaveErrorDetail(e instanceof Error ? e.message : "שגיאה לא ידועה")
+      setSaveErrorDetail(
+        e instanceof Error ? e.message : t.common.networkError
+      )
     }
   }
 
-  const resultUi = scoreTierUi(score)
+  const resultUi = scoreTierFromDictionary(score, t.scoreTier)
 
   const confDec = confidenceAsDecimal(conf)
 
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-6 p-6">
+    <div className={pageContainerNarrow}>
       <div>
-        <h1 className="font-semibold text-2xl tracking-tight">מחשבון RICE</h1>
-        <p className="mt-1 text-muted-foreground text-sm">
-          נוסחה: (Reach × Impact × Confidence) ÷ Effort — כאשר Confidence הוא
-          מספר עשרוני (למשל 0.8 ל־80%).
-        </p>
+        <h1 className="font-semibold text-2xl tracking-tight">{t.calculator.title}</h1>
+        <p className="mt-1 text-muted-foreground text-sm">{t.calculator.subtitle}</p>
       </div>
 
       <Card className="border-border/80 shadow-sm">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">פרטי הרעיון</CardTitle>
+          <CardTitle className="text-base">{t.calculator.ideaDetails}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-6">
           <div className="space-y-2">
-            <Label htmlFor="idea-name">שם הרעיון / הפיצ&apos;ר</Label>
+            <Label htmlFor="idea-name">{t.calculator.ideaName}</Label>
             <Input
               id="idea-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="למשל: אינטגרציה ל-Slack"
+              placeholder={t.calculator.ideaPlaceholder}
               autoComplete="off"
               className="bg-transparent dark:bg-input/30"
             />
@@ -177,7 +212,7 @@ export function RiceCalculator() {
 
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <Label>Reach (תפוצה)</Label>
+              <Label>{t.calculator.reach}</Label>
               <span
                 dir="ltr"
                 className="rounded-md bg-muted px-2 py-0.5 font-medium text-xs tabular-nums"
@@ -185,14 +220,17 @@ export function RiceCalculator() {
                 {reachVal} / {REACH_MAX}
               </span>
             </div>
-            <div dir="ltr" className="rounded-xl p-3 ring-1 ring-border/60">
-              <div className="relative px-1 py-2.5">
+            <div dir="ltr" className={cn("rounded-xl p-3 ring-1 ring-border/60", sliderTouchClass)}>
+              <div className="relative min-w-0 px-1">
                 <div
                   className="pointer-events-none absolute inset-x-1 top-1/2 z-0 h-1 -translate-y-1/2 rounded-full bg-muted"
                   aria-hidden
                 />
                 <div
-                  className="pointer-events-none absolute inset-x-1 top-1/2 z-[1] flex h-1 -translate-y-1/2 justify-end overflow-hidden rounded-full"
+                  className={cn(
+                    "pointer-events-none absolute inset-x-1 top-1/2 z-[1] flex h-1 -translate-y-1/2 overflow-hidden rounded-full",
+                    reachFillJustifyClass(rtl)
+                  )}
                   aria-hidden
                 >
                   <div
@@ -204,52 +242,38 @@ export function RiceCalculator() {
                   min={REACH_MIN}
                   max={REACH_MAX}
                   step={1}
-                  value={[reachSliderUiValue(reachVal)]}
+                  value={[reachSliderUiValue(reachVal, rtl)]}
                   onValueChange={(v) => {
                     const ui = Array.isArray(v) ? v[0]! : v
-                    setReach([reachFromSliderUi(ui)])
+                    setReach([reachFromSliderUi(ui, rtl)])
                   }}
                   className="relative z-10 [&_[data-slot=slider-track]]:bg-transparent [&_[data-slot=slider-range]]:bg-transparent"
                 />
               </div>
             </div>
-            <p className="text-muted-foreground text-xs">
-              שמאל = תפוצה רחבה ({REACH_MAX}), ימין = מיעוט ({REACH_MIN}).
-            </p>
+            <p className="text-muted-foreground text-xs">{reachHintText}</p>
           </div>
 
           <div className="space-y-2">
-            <Label>Impact (השפעה)</Label>
-            <div
-              dir="ltr"
-              className="grid grid-cols-5 gap-1 rounded-lg bg-muted/40 p-1 ring-1 ring-border/60"
-            >
-              {IMPACT_OPTIONS.map((opt) => {
-                const selected = impact === opt.value
-                return (
-                  <TapMotion key={opt.value} className="block min-w-0">
-                    <Button
-                      type="button"
-                      variant={selected ? "default" : "ghost"}
-                      size="sm"
-                      className={cn(
-                        "h-auto w-full flex-col gap-0.5 py-2 text-[10px] leading-tight",
-                        selected && "shadow-sm"
-                      )}
-                      onClick={() => setImpact(opt.value)}
-                    >
-                      <span className="font-medium">{opt.value}</span>
-                      <span className="opacity-80">{opt.label}</span>
-                    </Button>
-                  </TapMotion>
-                )
-              })}
-            </div>
+            <Label>{t.calculator.impact}</Label>
+            <MetricOptionsGrid
+              options={impactOptions}
+              selected={impact}
+              onSelect={setImpact}
+              renderOption={(value) => (
+                <>
+                  <span className="font-medium tabular-nums">{value}</span>
+                  <span className="opacity-80">
+                    {t.impactLabels[String(value)]}
+                  </span>
+                </>
+              )}
+            />
           </div>
 
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <Label>Confidence (ביטחון)</Label>
+              <Label>{t.calculator.confidence}</Label>
               <span
                 dir="ltr"
                 className="rounded-md px-2 py-0.5 font-medium text-xs tabular-nums"
@@ -261,12 +285,11 @@ export function RiceCalculator() {
                 {conf}% ({confDec.toFixed(2)})
               </span>
             </div>
-            <div dir="ltr" className="rounded-xl p-3 ring-1 ring-border/60">
+            <div dir="ltr" className={cn("rounded-xl p-3 ring-1 ring-border/60", sliderTouchClass)}>
               <div
-                className="relative rounded-lg px-1 py-2"
+                className="relative min-w-0 rounded-lg px-1"
                 style={{
-                  background:
-                    "linear-gradient(90deg, #16a34a 0%, #facc15 50%, #dc2626 100%)",
+                  background: confidenceTrackGradient(rtl),
                 }}
               >
                 <div
@@ -277,48 +300,31 @@ export function RiceCalculator() {
                   min={0}
                   max={100}
                   step={1}
-                  value={[confidenceSliderUiValue(conf)]}
+                  value={[confidenceSliderUiValue(conf, rtl)]}
                   onValueChange={(v) => {
                     const ui = Array.isArray(v) ? v[0]! : v
-                    setConfidence([confidenceFromSliderUi(ui)])
+                    setConfidence([confidenceFromSliderUi(ui, rtl)])
                   }}
                   className="relative z-10 [&_[data-slot=slider-track]]:bg-transparent [&_[data-slot=slider-range]]:bg-transparent"
                 />
               </div>
             </div>
-            <p className="text-muted-foreground text-xs">
-              שמאל = ביטחון גבוה (100%), ימין = ביטחון נמוך (0%). בנוסחה משתמשים
-              בעשרוני (למשל 80% → 0.8).
-            </p>
+            <p className="text-muted-foreground text-xs">{t.calculator.confidenceHint}</p>
           </div>
 
           <div className="space-y-2">
-            <Label>Effort (מאמץ, חודשי-אדם)</Label>
-            <div
-              dir="ltr"
-              className="grid grid-cols-5 gap-1 rounded-lg bg-muted/40 p-1 ring-1 ring-border/60"
-            >
-              {EFFORT_OPTIONS.map((opt) => {
-                const selected = effort === opt.value
-                return (
-                  <TapMotion key={opt.value} className="block min-w-0">
-                    <Button
-                      type="button"
-                      variant={selected ? "default" : "ghost"}
-                      size="sm"
-                      className={cn(
-                        "h-auto w-full flex-col gap-0.5 py-2 text-[10px] leading-tight",
-                        selected && "shadow-sm"
-                      )}
-                      onClick={() => setEffort(opt.value)}
-                    >
-                      <span className="font-medium tabular-nums">{opt.value}</span>
-                      <span className="opacity-80">{opt.label}</span>
-                    </Button>
-                  </TapMotion>
-                )
-              })}
-            </div>
+            <Label>{t.calculator.effort}</Label>
+            <MetricOptionsGrid
+              options={effortOptions}
+              selected={effort}
+              onSelect={setEffort}
+              renderOption={(value) => (
+                <>
+                  <span className="font-medium tabular-nums">{value}</span>
+                  <span className="opacity-80">{t.common.months}</span>
+                </>
+              )}
+            />
           </div>
 
           {previewScore != null && (
@@ -327,7 +333,11 @@ export function RiceCalculator() {
               animate={{ opacity: 1, y: 0 }}
               className="text-muted-foreground text-xs"
             >
-              ({reachVal} × {impact} × {confDec.toFixed(2)}) ÷ {effort} ={" "}
+              {t.calculator.previewFormula
+                .replace("{reach}", String(reachVal))
+                .replace("{impact}", String(impact))
+                .replace("{confidence}", confDec.toFixed(2))
+                .replace("{effort}", String(effort))}{" "}
               <span className="font-mono text-foreground">
                 {previewScore.toFixed(1)}
               </span>
@@ -341,16 +351,16 @@ export function RiceCalculator() {
               onClick={handleCalculate}
               disabled={previewScore == null}
             >
-              חשב
+              {t.common.calculate}
             </Button>
           </TapMotion>
         </CardContent>
       </Card>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader className="relative gap-4 pr-11 pl-4">
-            <DialogTitle className="text-start text-base">תוצאת RICE</DialogTitle>
+        <DialogContent className="max-h-[min(90dvh,640px)] overflow-y-auto sm:max-w-md">
+          <DialogHeader className="relative gap-4 pe-11 ps-4">
+            <DialogTitle className="text-start text-base">{t.calculator.resultTitle}</DialogTitle>
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -371,9 +381,7 @@ export function RiceCalculator() {
                 </Badge>
                 <DialogDescription className="text-start text-muted-foreground">
                   <span className="block text-foreground/90">{resultUi.description}</span>
-                  <span className="mt-2 block">
-                    ספים: 1–10 נמוך · 11–24 בינוני · 25 ומעלה גבוה.
-                  </span>
+                  <span className="mt-2 block">{t.calculator.thresholds}</span>
                 </DialogDescription>
               </div>
             </motion.div>
@@ -384,19 +392,7 @@ export function RiceCalculator() {
           <DialogFooter className="flex-col gap-2 sm:flex-col">
             {!isSupabaseConfigured() && (
               <p className="text-amber-600 text-xs leading-relaxed dark:text-amber-400">
-                צרו קובץ{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">.env.local</code>{" "}
-                בתיקיית <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">priority-master</code>{" "}
-                (ליד <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">package.json</code>
-                ), עם <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">NEXT_PUBLIC_SUPABASE_URL</code>{" "}
-                (כתובת בסיס <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">…supabase.co</code> בלי{" "}
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">/rest/v1/</code>
-                ) ו־
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>
-                . אפשר להעתיק מ־
-                <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">.env.example</code>
-                . אחרי שמירה: עצרו והפעילו מחדש את <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">npm run dev</code>{" "}
-                כדי ש־Next יטעין את המשתנים — בלי זה כפתור השמירה והחיוויים ברשימה לא יופעלו.
+                {t.calculator.envHint}
               </p>
             )}
             <AnimatePresence mode="wait">
@@ -406,7 +402,7 @@ export function RiceCalculator() {
                   animate={{ opacity: 1 }}
                   className="text-emerald-600 text-xs dark:text-emerald-400"
                 >
-                  נשמר ברשימת תעדוף.
+                  {t.calculator.savedToList}
                 </motion.p>
               )}
               {saveStatus === "err" && (
@@ -415,9 +411,7 @@ export function RiceCalculator() {
                   animate={{ opacity: 1 }}
                   className="flex flex-col gap-2"
                 >
-                  <p className="text-destructive text-xs">
-                    שמירה נכשלה — בדקו חיבור, טבלת priorities והרשאות (RLS) ב-Supabase.
-                  </p>
+                  <p className="text-destructive text-xs">{t.calculator.saveFailed}</p>
                   {saveErrorDetail && (
                     <pre className="max-h-24 overflow-auto rounded-md bg-muted/80 p-2 font-mono text-[10px] leading-snug whitespace-pre-wrap break-words text-muted-foreground">
                       {saveErrorDetail}
@@ -428,12 +422,7 @@ export function RiceCalculator() {
                       saveErrorDetail
                     ) && (
                       <p className="text-muted-foreground text-[11px] leading-relaxed">
-                        הריצו ב-SQL Editor של Supabase את הקובץ{" "}
-                        <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">
-                          supabase/migrations/20260514140000_priorities_anon_grants.sql
-                        </code>{" "}
-                        (או <code className="rounded bg-muted px-1 py-0.5 font-mono text-[10px]">supabase db push</code>
-                        ) כדי לפתוח הרשאות ל־anon על הטבלה.
+                        {t.calculator.rlsHint}
                       </p>
                     )}
                 </motion.div>
@@ -452,12 +441,12 @@ export function RiceCalculator() {
                     previewScore == null
                   }
                 >
-                  {saveStatus === "saving" ? "שומר…" : "שמור לרשימה"}
+                  {saveStatus === "saving" ? t.common.saving : t.calculator.saveToList}
                 </Button>
               </TapMotion>
               <TapMotion>
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                  סגור
+                  {t.common.close}
                 </Button>
               </TapMotion>
             </div>

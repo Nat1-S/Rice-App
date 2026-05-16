@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Card, CardContent } from "@/components/ui/card"
 import { Slider } from "@/components/ui/slider"
 import {
   Table,
@@ -23,28 +24,43 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { MetricOptionsGrid } from "@/components/metric-options-grid"
 import { TapMotion } from "@/components/tap-motion"
 import {
   calculateRiceScore,
   clampReach,
   confidenceFromSliderUi,
   confidenceSliderUiValue,
-  EFFORT_OPTIONS,
-  IMPACT_OPTIONS,
+  confidenceTrackGradient,
+  getEffortOptionsForDir,
+  getImpactOptionsForDir,
   REACH_MAX,
   REACH_MIN,
+  reachFillJustifyClass,
   reachFillPercent,
   reachFromSliderUi,
   reachSliderUiValue,
-  scoreTierUi,
   snapEffortToDiscrete,
 } from "@/lib/rice"
+import { scoreTierFromDictionary } from "@/lib/score-tier-ui"
+import { pageContainerNarrow, sliderTouchClass } from "@/lib/layout"
 import { cn } from "@/lib/utils"
 import type { PriorityRow } from "@/lib/supabase/client"
 import { getSupabaseBrowser, isSupabaseConfigured } from "@/lib/supabase/client"
 import { usePrioritiesRealtime } from "@/hooks/use-priorities-realtime"
+import { useAuth } from "@/contexts/auth-context"
+import { useTranslation } from "@/contexts/language-context"
 
 export function PriorityList() {
+  const { user, loading: authLoading } = useAuth()
+  const { t, dir } = useTranslation()
+  const rtl = dir === "rtl"
+  const impactOptions = useMemo(
+    () => getImpactOptionsForDir(rtl),
+    [rtl]
+  )
+  const effortOptions = useMemo(() => getEffortOptionsForDir(rtl), [rtl])
+
   const [rows, setRows] = useState<PriorityRow[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -66,6 +82,11 @@ export function PriorityList() {
       setLoading(false)
       return
     }
+    if (!user) {
+      setRows([])
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setFetchError(null)
     try {
@@ -80,27 +101,38 @@ export function PriorityList() {
         setRows((data ?? []) as PriorityRow[])
       }
     } catch (e) {
-      setFetchError(e instanceof Error ? e.message : "שגיאת רשת")
+      setFetchError(e instanceof Error ? e.message : t.common.networkError)
       setRows([])
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [user, t.common.networkError])
 
   useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setLoading(false)
+      return
+    }
+    if (authLoading) {
+      setLoading(true)
+      return
+    }
     void load()
-  }, [load])
+  }, [authLoading, load])
 
   const onRealtime = useCallback(() => {
     void load()
   }, [load])
 
-  usePrioritiesRealtime(onRealtime)
+  usePrioritiesRealtime(user?.id, onRealtime)
 
   const sorted = useMemo(
     () => [...rows].sort((a, b) => b.score - a.score),
     [rows]
   )
+
+  const needsSignIn = !authLoading && !user
+  const editSheetSide = dir === "rtl" ? "left" : "right"
 
   const openEdit = (row: PriorityRow) => {
     setActionError(null)
@@ -116,7 +148,7 @@ export function PriorityList() {
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm("להסיר את הרעיון מהרשימה? (הדאשבורד יתעדכן אוטומטית)")) return
+    if (!confirm(t.common.confirmDelete)) return
     const supabase = getSupabaseBrowser()
     if (!supabase) return
     setActionError(null)
@@ -128,7 +160,7 @@ export function PriorityList() {
       }
       await load()
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "מחיקה נכשלה")
+      setActionError(e instanceof Error ? e.message : t.common.deleteFailed)
     }
   }
 
@@ -161,50 +193,63 @@ export function PriorityList() {
       setSheetOpen(false)
       await load()
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "עדכון נכשל")
+      setActionError(e instanceof Error ? e.message : t.common.updateFailed)
     }
   }
 
+  const renderRowActions = (row: PriorityRow) => (
+    <div className="flex shrink-0 gap-0">
+      <TapMotion>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-9"
+          aria-label={t.common.edit}
+          onClick={(e) => {
+            e.stopPropagation()
+            openEdit(row)
+          }}
+        >
+          <Pencil className="size-4" />
+        </Button>
+      </TapMotion>
+      <TapMotion>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-9 text-destructive hover:text-destructive"
+          aria-label={t.common.delete}
+          onClick={(e) => {
+            e.stopPropagation()
+            void handleDelete(row.id)
+          }}
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      </TapMotion>
+    </div>
+  )
+
   if (!isSupabaseConfigured()) {
     return (
-      <div className="mx-auto flex w-full max-w-xl flex-col items-center px-4 py-6 text-center sm:px-6">
-        <h1 className="font-semibold text-2xl tracking-tight">רשימת תעדוף</h1>
-        <p className="mt-1 text-muted-foreground text-sm">
-          רק רעיונות שנשמרו. ממוין לפי ציון יורד.
-        </p>
+      <div className={cn(pageContainerNarrow, "items-center text-center")}>
+        <h1 className="font-semibold text-2xl tracking-tight">
+          {t.list.notConfiguredTitle}
+        </h1>
         <p className="mt-3 max-w-md text-muted-foreground text-sm leading-relaxed">
-          אין חיבור ל-Supabase (משתני <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">NEXT_PUBLIC_*</code> לא נטענו). צרו קובץ{" "}
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-            .env.local
-          </code>{" "}
-          בתיקיית <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">priority-master</code> (ליד{" "}
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">package.json</code>
-          ) והגדירו בו{" "}
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-            NEXT_PUBLIC_SUPABASE_URL
-          </code>{" "}
-          (כתובת בסיס <code className="rounded bg-muted px-1.5 py-0.5 text-xs">…supabase.co</code> בלי{" "}
-          <code className="rounded bg-muted px-1.5 py-0.5 text-xs">/rest/v1/</code>
-          ) ו־
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
-            NEXT_PUBLIC_SUPABASE_ANON_KEY
-          </code>
-          — ראו <code className="rounded bg-muted px-1.5 py-0.5 text-xs">.env.example</code>
-          . אחרי שמירה: הפעילו מחדש את <code className="rounded bg-muted px-1.5 py-0.5 text-xs">npm run dev</code>
-          . בלי זה לא תופיע כאן הטבלה עם חיווי הציונים. טבלת{" "}
-          <code className="rounded bg-muted px-1.5 py-0.5 text-xs">priorities</code> ב-Supabase צריכה לכלול: id, name, reach, impact, confidence, effort, score.
+          {t.list.notConfiguredBody}
         </p>
       </div>
     )
   }
 
   return (
-      <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-3 px-4 py-6 sm:px-6">
+    <div className={cn(pageContainerNarrow, "items-center")}>
       <div className="w-full text-center">
-        <h1 className="font-semibold text-2xl tracking-tight">רשימת תעדוף</h1>
-        <p className="mt-1 text-muted-foreground text-sm">
-          רק רעיונות שנשמרו. ממוין לפי ציון יורד.
-        </p>
+        <h1 className="font-semibold text-2xl tracking-tight">{t.list.title}</h1>
+        <p className="mt-1 text-muted-foreground text-sm">{t.list.subtitle}</p>
       </div>
 
       {fetchError && (
@@ -218,110 +263,200 @@ export function PriorityList() {
         </p>
       )}
 
-      <div className="w-fit max-w-full overflow-hidden rounded-lg border border-border/80 bg-card shadow-sm">
-        <Table dir="rtl" className="w-auto table-auto text-sm">
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="max-w-[12rem] text-end whitespace-normal px-3 py-2 text-xs font-semibold">
-                שם הרעיון
-              </TableHead>
-              <TableHead className="min-w-[10.5rem] text-end whitespace-nowrap px-3 py-2 text-xs font-semibold">
-                ציון
-              </TableHead>
-              <TableHead className="text-end whitespace-nowrap px-2 py-2 text-xs font-semibold">
-                פעולות
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
-              <TableRow>
-                <TableCell colSpan={3} className="px-2 py-4 text-center text-muted-foreground text-sm">
-                  טוען…
-                </TableCell>
-              </TableRow>
-            )}
-            {!loading && sorted.length === 0 && !fetchError && (
-              <TableRow>
-                <TableCell colSpan={3} className="px-2 py-4 text-center text-muted-foreground text-sm">
-                  אין עדיין רעיונות. חשבו RICE בעמוד הבית ושמרו לרשימה.
-                </TableCell>
-              </TableRow>
-            )}
-            {sorted.map((row) => {
-              const tier = scoreTierUi(row.score)
-              return (
-                <TableRow
-                  key={row.id}
-                  className="cursor-pointer transition-colors hover:bg-muted/40"
+      {(loading || authLoading) && (
+        <p className="w-full text-center text-muted-foreground text-sm md:hidden">
+          {t.common.loading}
+        </p>
+      )}
+      {!loading && !authLoading && sorted.length === 0 && !fetchError && (
+        <p className="w-full text-center text-muted-foreground text-sm md:hidden">
+          {needsSignIn ? t.list.notConfiguredBody : t.list.empty}
+        </p>
+      )}
+
+      <ul className="flex w-full flex-col gap-3 md:hidden">
+        {!loading &&
+          !authLoading &&
+          sorted.map((row, index) => {
+            const tier = scoreTierFromDictionary(row.score, t.scoreTier)
+            const rank = index + 1
+            return (
+              <li key={row.id}>
+                <Card
+                  className="cursor-pointer border-border/80 shadow-sm transition-colors hover:bg-muted/20"
                   onClick={() => openEdit(row)}
                 >
-                  <TableCell className="max-w-[12rem] text-end align-middle whitespace-normal px-3 py-2">
-                    <span className="font-medium leading-snug">{row.name}</span>
-                  </TableCell>
-                  <TableCell className="min-w-[10.5rem] text-end align-middle whitespace-nowrap px-3 py-2">
-                    <div className="flex flex-row flex-nowrap items-center justify-end gap-2">
-                      <span className="font-mono text-sm tabular-nums leading-none">
+                  <CardContent className="flex flex-col gap-3 p-4">
+                    <div className="flex items-start gap-2">
+                      <span
+                        className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted font-mono text-muted-foreground text-xs tabular-nums"
+                        aria-hidden
+                      >
+                        {rank}
+                      </span>
+                      <div className="flex min-w-0 flex-1 items-start justify-between gap-2">
+                        <p
+                          className="min-w-0 flex-1 break-all font-medium leading-snug"
+                          title={row.name}
+                        >
+                          {row.name}
+                        </p>
+                        {renderRowActions(row)}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-mono text-sm tabular-nums">
                         {row.score.toFixed(1)}
                       </span>
                       <Badge
                         variant={tier.variant}
                         title={tier.description}
-                        className="h-6 shrink-0 gap-0.5 px-2 py-0 text-[11px] font-medium leading-none"
+                        className="h-6 shrink-0 gap-0.5 px-2 py-0 text-[11px] font-medium"
                       >
                         <span aria-hidden>{tier.emoji}</span>
                         {tier.label}
                       </Badge>
                     </div>
-                  </TableCell>
-                  <TableCell className="px-2 py-2 align-middle">
-                    <div className="flex justify-end gap-0">
-                      <TapMotion>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label="עריכה"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openEdit(row)
-                          }}
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                      </TapMotion>
-                      <TapMotion>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          className="text-destructive hover:text-destructive"
-                          aria-label="מחיקה"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            void handleDelete(row.id)
-                          }}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </TapMotion>
-                    </div>
+                  </CardContent>
+                </Card>
+              </li>
+            )
+          })}
+      </ul>
+
+      <div className="hidden w-full min-w-0 rounded-lg border border-border/80 bg-card shadow-sm md:block">
+        <Table dir={dir} className="w-full table-fixed text-sm">
+          <colgroup>
+            <col className="w-12" />
+            <col />
+            <col className="w-[11.5rem]" />
+            <col className="w-[5.25rem]" />
+          </colgroup>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="w-12 px-2 py-2 text-center text-xs font-semibold">
+                {t.list.rank}
+              </TableHead>
+              <TableHead className="min-w-0 px-3 py-2 text-end text-xs font-semibold">
+                {t.list.ideaName}
+              </TableHead>
+              <TableHead className="px-3 py-2 text-end text-xs font-semibold whitespace-nowrap">
+                {t.common.score}
+              </TableHead>
+              <TableHead className="px-2 py-2 text-end text-xs font-semibold whitespace-nowrap">
+                {t.common.actions}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {(loading || authLoading) && (
+              <TableRow>
+                <TableCell
+                  colSpan={4}
+                  className="px-2 py-4 text-center text-muted-foreground text-sm"
+                >
+                  {t.common.loading}
+                </TableCell>
+              </TableRow>
+            )}
+            {!loading &&
+              !authLoading &&
+              sorted.length === 0 &&
+              !fetchError && (
+                <TableRow>
+                  <TableCell
+                    colSpan={4}
+                    className="px-2 py-4 text-center text-muted-foreground text-sm"
+                  >
+                    {needsSignIn ? t.list.notConfiguredBody : t.list.empty}
                   </TableCell>
                 </TableRow>
-              )
-            })}
+              )}
+            {!loading &&
+              !authLoading &&
+              sorted.map((row, index) => {
+                const tier = scoreTierFromDictionary(row.score, t.scoreTier)
+                const rank = index + 1
+                return (
+                  <TableRow
+                    key={row.id}
+                    className="cursor-pointer transition-colors hover:bg-muted/40"
+                    onClick={() => openEdit(row)}
+                  >
+                    <TableCell className="w-12 px-2 py-2 text-center align-middle font-mono text-muted-foreground text-xs tabular-nums whitespace-nowrap">
+                      {rank}
+                    </TableCell>
+                    <TableCell className="min-w-0 max-w-0 px-3 py-2 text-end align-middle whitespace-normal">
+                      <span
+                        className="block overflow-hidden font-medium [overflow-wrap:anywhere] line-clamp-2 leading-snug"
+                        title={row.name}
+                      >
+                        {row.name}
+                      </span>
+                    </TableCell>
+                    <TableCell className="px-3 py-2 text-end align-middle whitespace-nowrap">
+                      <div className="flex flex-row flex-nowrap items-center justify-end gap-2">
+                        <span className="font-mono text-sm tabular-nums leading-none">
+                          {row.score.toFixed(1)}
+                        </span>
+                        <Badge
+                          variant={tier.variant}
+                          title={tier.description}
+                          className="h-6 shrink-0 gap-0.5 px-2 py-0 text-[11px] font-medium leading-none"
+                        >
+                          <span aria-hidden>{tier.emoji}</span>
+                          {tier.label}
+                        </Badge>
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-2 py-2 align-middle whitespace-nowrap">
+                      <div className="flex justify-end gap-0">
+                        <TapMotion>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={t.common.edit}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openEdit(row)
+                            }}
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                        </TapMotion>
+                        <TapMotion>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-destructive hover:text-destructive"
+                            aria-label={t.common.delete}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              void handleDelete(row.id)
+                            }}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </TapMotion>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
           </TableBody>
         </Table>
       </div>
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent
-          side="left"
-          closeOnLeft
-          className="w-full gap-0 p-0 sm:max-w-md"
+          side={editSheetSide}
+          closeOnLeft={dir === "rtl"}
+          className="w-full max-w-full gap-0 p-0 sm:max-w-md"
         >
           <SheetHeader className="border-b p-4 ps-14 pe-4">
-            <SheetTitle>עריכה מהירה</SheetTitle>
+            <SheetTitle>{t.list.quickEdit}</SheetTitle>
           </SheetHeader>
           {actionError && sheetOpen && (
             <p className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-destructive text-xs">
@@ -331,7 +466,7 @@ export function PriorityList() {
           <ScrollArea className="h-[calc(100vh-8rem)]">
             <div className="flex flex-col gap-4 p-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-name">שם</Label>
+                <Label htmlFor="edit-name">{t.common.name}</Label>
                 <Input
                   id="edit-name"
                   value={form.name}
@@ -343,7 +478,7 @@ export function PriorityList() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-2">
                   <Label>
-                    Reach ({REACH_MIN}–{REACH_MAX})
+                    {t.list.reachLabel} ({REACH_MIN}–{REACH_MAX})
                   </Label>
                   <span
                     dir="ltr"
@@ -359,7 +494,10 @@ export function PriorityList() {
                       aria-hidden
                     />
                     <div
-                      className="pointer-events-none absolute inset-x-1 top-1/2 z-[1] flex h-1 -translate-y-1/2 justify-end overflow-hidden rounded-full"
+                      className={cn(
+                        "pointer-events-none absolute inset-x-1 top-1/2 z-[1] flex h-1 -translate-y-1/2 overflow-hidden rounded-full",
+                        reachFillJustifyClass(rtl)
+                      )}
                       aria-hidden
                     >
                       <div
@@ -374,13 +512,13 @@ export function PriorityList() {
                       max={REACH_MAX}
                       step={1}
                       value={[
-                        reachSliderUiValue(form.reach[0] ?? REACH_MIN),
+                        reachSliderUiValue(form.reach[0] ?? REACH_MIN, rtl),
                       ]}
                       onValueChange={(v) => {
                         const ui = Array.isArray(v) ? v[0]! : v
                         setForm((f) => ({
                           ...f,
-                          reach: [reachFromSliderUi(ui)],
+                          reach: [reachFromSliderUi(ui, rtl)],
                         }))
                       }}
                       className="relative z-10 [&_[data-slot=slider-track]]:bg-transparent [&_[data-slot=slider-range]]:bg-transparent"
@@ -389,40 +527,30 @@ export function PriorityList() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Impact</Label>
-                <div
-                  dir="ltr"
-                  className="grid grid-cols-5 gap-1 rounded-lg bg-muted/40 p-1 ring-1 ring-border/60"
-                >
-                  {IMPACT_OPTIONS.map((opt) => {
-                    const selected = form.impact === opt.value
-                    return (
-                      <TapMotion key={opt.value} className="block min-w-0">
-                        <Button
-                          type="button"
-                          variant={selected ? "default" : "ghost"}
-                          size="sm"
-                          className="h-auto w-full flex-col gap-0.5 py-2 text-[10px]"
-                          onClick={() =>
-                            setForm((f) => ({ ...f, impact: opt.value }))
-                          }
-                        >
-                          <span className="font-medium">{opt.value}</span>
-                          <span className="opacity-80">{opt.label}</span>
-                        </Button>
-                      </TapMotion>
-                    )
-                  })}
-                </div>
+                <Label>{t.list.impact}</Label>
+                <MetricOptionsGrid
+                  options={impactOptions}
+                  selected={form.impact}
+                  onSelect={(value) =>
+                    setForm((f) => ({ ...f, impact: value }))
+                  }
+                  renderOption={(value) => (
+                    <>
+                      <span className="font-medium tabular-nums">{value}</span>
+                      <span className="opacity-80">
+                        {t.impactLabels[String(value)] ?? String(value)}
+                      </span>
+                    </>
+                  )}
+                />
               </div>
               <div className="space-y-3">
-                <Label>Confidence (%)</Label>
-                <div dir="ltr" className="rounded-xl p-3 ring-1 ring-border/60">
+                <Label>{t.list.confidencePercent}</Label>
+                <div dir="ltr" className={cn("rounded-xl p-3 ring-1 ring-border/60", sliderTouchClass)}>
                   <div
-                    className="relative rounded-lg px-1 py-2"
+                    className="relative min-w-0 rounded-lg px-1"
                     style={{
-                      background:
-                        "linear-gradient(90deg, #16a34a 0%, #facc15 50%, #dc2626 100%)",
+                      background: confidenceTrackGradient(rtl),
                     }}
                   >
                     <div
@@ -435,14 +563,15 @@ export function PriorityList() {
                       step={1}
                       value={[
                         confidenceSliderUiValue(
-                          form.confidence[0] ?? 0
+                          form.confidence[0] ?? 0,
+                          rtl
                         ),
                       ]}
                       onValueChange={(v) => {
                         const ui = Array.isArray(v) ? v[0]! : v
                         setForm((f) => ({
                           ...f,
-                          confidence: [confidenceFromSliderUi(ui)],
+                          confidence: [confidenceFromSliderUi(ui, rtl)],
                         }))
                       }}
                       className="relative z-10 [&_[data-slot=slider-track]]:bg-transparent [&_[data-slot=slider-range]]:bg-transparent"
@@ -451,43 +580,27 @@ export function PriorityList() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Effort (חודשי-אדם)</Label>
-                <div
-                  dir="ltr"
-                  className="grid grid-cols-5 gap-1 rounded-lg bg-muted/40 p-1 ring-1 ring-border/60"
-                >
-                  {EFFORT_OPTIONS.map((opt) => {
-                    const selected = form.effort === opt.value
-                    return (
-                      <TapMotion key={opt.value} className="block min-w-0">
-                        <Button
-                          type="button"
-                          variant={selected ? "default" : "ghost"}
-                          size="sm"
-                          className={cn(
-                            "h-auto w-full flex-col gap-0.5 py-2 text-[10px] leading-tight",
-                            selected && "shadow-sm"
-                          )}
-                          onClick={() =>
-                            setForm((f) => ({ ...f, effort: opt.value }))
-                          }
-                        >
-                          <span className="font-medium tabular-nums">
-                            {opt.value}
-                          </span>
-                          <span className="opacity-80">{opt.label}</span>
-                        </Button>
-                      </TapMotion>
-                    )
-                  })}
-                </div>
+                <Label>{t.list.effortPersonMonths}</Label>
+                <MetricOptionsGrid
+                  options={effortOptions}
+                  selected={form.effort}
+                  onSelect={(value) =>
+                    setForm((f) => ({ ...f, effort: value }))
+                  }
+                  renderOption={(value) => (
+                    <>
+                      <span className="font-medium tabular-nums">{value}</span>
+                      <span className="opacity-80">{t.common.months}</span>
+                    </>
+                  )}
+                />
               </div>
             </div>
           </ScrollArea>
           <SheetFooter className="border-t p-4">
             <TapMotion className="w-full">
               <Button type="button" className="w-full" onClick={() => void saveEdit()}>
-                שמור שינויים
+                {t.common.saveChanges}
               </Button>
             </TapMotion>
           </SheetFooter>
