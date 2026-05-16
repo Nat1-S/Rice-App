@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import confetti from "canvas-confetti"
 import { CheckCircle2, CircleHelp, XCircle } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
@@ -40,6 +41,10 @@ import {
 } from "@/lib/rice"
 import { scoreTierFromDictionary } from "@/lib/score-tier-ui"
 import { getSupabaseBrowser, isSupabaseConfigured } from "@/lib/supabase/client"
+import {
+  insertPriorityForUser,
+  resolveAuthenticatedUserId,
+} from "@/lib/supabase/priorities"
 import { pageContainerNarrow, sliderTouchClass } from "@/lib/layout"
 import { cn } from "@/lib/utils"
 
@@ -61,8 +66,9 @@ function ScoreResultIcon({ tier }: { tier: "high" | "medium" | "low" }) {
 }
 
 export function RiceCalculator() {
-  const { user: authUser } = useAuth()
+  const { user, session, loading: authLoading } = useAuth()
   const { t, dir } = useTranslation()
+  const router = useRouter()
   const rtl = dir === "rtl"
 
   const impactOptions = useMemo(
@@ -89,6 +95,14 @@ export function RiceCalculator() {
   const previewScore = useMemo(() => {
     return calculateRiceScore(reachVal, impact, conf, effort)
   }, [reachVal, effort, impact, conf])
+
+  const isSignedIn = Boolean(user?.id && session)
+  const canSave =
+    isSupabaseConfigured() &&
+    isSignedIn &&
+    !authLoading &&
+    Boolean(name.trim()) &&
+    previewScore != null
 
   const runConfetti = useCallback(() => {
     const end = Date.now() + 1200
@@ -145,28 +159,46 @@ export function RiceCalculator() {
       setSaveErrorDetail(t.calculator.missingNameOrScore)
       return
     }
+    if (authLoading) return
+
+    if (!user?.id || !session) {
+      setSaveStatus("err")
+      setSaveErrorDetail(t.calculator.notSignedIn)
+      router.replace("/login")
+      return
+    }
 
     setSaveStatus("saving")
     setSaveErrorDetail(null)
     try {
-      const {
-        data: { user: sessionUser },
-      } = await supabase.auth.getUser()
-      const user = sessionUser ?? authUser ?? null
-      if (!user) {
+      let userId = await resolveAuthenticatedUserId(supabase)
+
+      if (!userId) {
+        const { data: refreshed, error: refreshError } =
+          await supabase.auth.refreshSession()
+        if (refreshError) {
+          setSaveStatus("err")
+          setSaveErrorDetail(refreshError.message)
+          return
+        }
+        userId = refreshed.session?.user?.id ?? null
+      }
+
+      if (!userId) {
         setSaveStatus("err")
         setSaveErrorDetail(t.calculator.notSignedIn)
+        router.replace("/login")
         return
       }
 
-      const { error } = await supabase.from("priorities").insert({
+      const { error } = await insertPriorityForUser(supabase, {
         name: name.trim(),
         reach: reachVal,
         impact,
         confidence: conf,
         effort,
         score: previewScore,
-        user_id: user.id,
+        user_id: userId,
       })
       if (error) {
         setSaveStatus("err")
@@ -433,12 +465,12 @@ export function RiceCalculator() {
                 <Button
                   type="button"
                   variant="secondary"
-                  onClick={handleSave}
-                  disabled={
-                    !isSupabaseConfigured() ||
-                    saveStatus === "saving" ||
-                    !name.trim() ||
-                    previewScore == null
+                  onClick={() => void handleSave()}
+                  disabled={!canSave || saveStatus === "saving"}
+                  title={
+                    !isSignedIn && !authLoading
+                      ? t.calculator.notSignedIn
+                      : undefined
                   }
                 >
                   {saveStatus === "saving" ? t.common.saving : t.calculator.saveToList}

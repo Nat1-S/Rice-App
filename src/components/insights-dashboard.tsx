@@ -28,6 +28,7 @@ import {
 import { riceNumerator, scoreTier } from "@/lib/rice"
 import type { PriorityRow } from "@/lib/supabase/client"
 import { getSupabaseBrowser, isSupabaseConfigured } from "@/lib/supabase/client"
+import { selectPrioritiesForUser } from "@/lib/supabase/priorities"
 import { usePrioritiesRealtime } from "@/hooks/use-priorities-realtime"
 import { useAuth } from "@/contexts/auth-context"
 import { useTranslation } from "@/contexts/language-context"
@@ -327,7 +328,7 @@ function ScatterTooltipPortal({ anchor }: { anchor: ScatterTooltipAnchor }) {
 }
 
 export function InsightsDashboard() {
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const { t, dir } = useTranslation()
   const rtl = dir === "rtl"
   const coarsePointer = useCoarsePointer()
@@ -395,10 +396,15 @@ export function InsightsDashboard() {
       setLoading(false)
       return
     }
+    if (!user) {
+      setRows([])
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setFetchError(null)
     try {
-      const { data, error } = await supabase.from("priorities").select("*")
+      const { data, error } = await selectPrioritiesForUser(supabase, user.id)
       if (error) {
         setFetchError(error.message)
         setRows([])
@@ -411,11 +417,19 @@ export function InsightsDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [t.common.networkError])
+  }, [user, t.common.networkError])
 
   useEffect(() => {
+    if (!isSupabaseConfigured()) {
+      setLoading(false)
+      return
+    }
+    if (authLoading) {
+      setLoading(true)
+      return
+    }
     void load()
-  }, [load])
+  }, [authLoading, load])
 
   const onRealtime = useCallback(() => {
     void load()

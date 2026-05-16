@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { getSupabaseBrowser } from "@/lib/supabase/client"
+import { PRIORITIES_USER_ID_COLUMN } from "@/lib/supabase/priorities"
 
 /**
  * מנוי לשינויים בטבלת priorities — מסונן לפי user_id (תואם RLS).
@@ -23,7 +24,7 @@ export function usePrioritiesRealtime(
           event: "*",
           schema: "public",
           table: "priorities",
-          filter: `user_id=eq.${userId}`,
+          filter: `${PRIORITIES_USER_ID_COLUMN}=eq.${userId}`,
         },
         () => {
           onChange()

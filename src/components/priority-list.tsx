@@ -47,6 +47,11 @@ import { pageContainerNarrow, sliderTouchClass } from "@/lib/layout"
 import { cn } from "@/lib/utils"
 import type { PriorityRow } from "@/lib/supabase/client"
 import { getSupabaseBrowser, isSupabaseConfigured } from "@/lib/supabase/client"
+import {
+  deletePriorityForUser,
+  selectPrioritiesForUser,
+  updatePriorityForUser,
+} from "@/lib/supabase/priorities"
 import { usePrioritiesRealtime } from "@/hooks/use-priorities-realtime"
 import { useAuth } from "@/contexts/auth-context"
 import { useTranslation } from "@/contexts/language-context"
@@ -90,10 +95,10 @@ export function PriorityList() {
     setLoading(true)
     setFetchError(null)
     try {
-      const { data, error } = await supabase
-        .from("priorities")
-        .select("*")
-        .order("score", { ascending: false })
+      const { data, error } = await selectPrioritiesForUser(supabase, user.id).order(
+        "score",
+        { ascending: false }
+      )
       if (error) {
         setFetchError(error.message)
         setRows([])
@@ -150,10 +155,10 @@ export function PriorityList() {
   const handleDelete = async (id: string) => {
     if (!confirm(t.common.confirmDelete)) return
     const supabase = getSupabaseBrowser()
-    if (!supabase) return
+    if (!supabase || !user) return
     setActionError(null)
     try {
-      const { error } = await supabase.from("priorities").delete().eq("id", id)
+      const { error } = await deletePriorityForUser(supabase, user.id, id)
       if (error) {
         setActionError(error.message)
         return
@@ -167,7 +172,7 @@ export function PriorityList() {
   const saveEdit = async () => {
     if (!editing) return
     const supabase = getSupabaseBrowser()
-    if (!supabase) return
+    if (!supabase || !user) return
     const reachVal = form.reach[0] ?? REACH_MIN
     const effort = form.effort
     const conf = form.confidence[0] ?? 70
@@ -175,17 +180,19 @@ export function PriorityList() {
     if (score == null) return
     setActionError(null)
     try {
-      const { error } = await supabase
-        .from("priorities")
-        .update({
+      const { error } = await updatePriorityForUser(
+        supabase,
+        user.id,
+        editing.id,
+        {
           name: form.name.trim(),
           reach: reachVal,
           impact: form.impact,
           confidence: conf,
           effort,
           score,
-        })
-        .eq("id", editing.id)
+        }
+      )
       if (error) {
         setActionError(error.message)
         return
