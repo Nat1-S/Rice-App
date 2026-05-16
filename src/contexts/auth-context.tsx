@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react"
 import type { Session, User } from "@supabase/supabase-js"
+import { getOAuthCallbackUrl } from "@/lib/auth-redirect"
 import { getSupabaseBrowser, isSupabaseConfigured } from "@/lib/supabase/client"
 
 type AuthContextValue = {
@@ -63,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = useCallback(async () => {
     const supabase = getSupabaseBrowser()
     if (!supabase) return
-    const redirectTo = `${window.location.origin}/auth/callback`
+    const redirectTo = getOAuthCallbackUrl()
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },

@@ -4,7 +4,8 @@ import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
 import { useTranslation } from "@/contexts/language-context"
-import { isSupabaseConfigured } from "@/lib/supabase/client"
+import { getOAuthCallbackUrl } from "@/lib/auth-redirect"
+import { getSupabaseBrowser, isSupabaseConfigured } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { LanguageSwitcher } from "@/components/language-switcher"
@@ -39,7 +40,7 @@ function GoogleIcon({ className }: { className?: string }) {
 }
 
 export function LoginForm() {
-  const { user, loading, signInWithGoogle } = useAuth()
+  const { user, loading } = useAuth()
   const { t } = useTranslation()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -58,7 +59,16 @@ export function LoginForm() {
     setSubmitting(true)
     setError(null)
     try {
-      await signInWithGoogle()
+      const supabase = getSupabaseBrowser()
+      if (!supabase) {
+        throw new Error(t.auth.notConfigured)
+      }
+      const redirectTo = getOAuthCallbackUrl()
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo },
+      })
+      if (oauthError) throw oauthError
     } catch (e) {
       setError(e instanceof Error ? e.message : t.auth.authError)
       setSubmitting(false)
